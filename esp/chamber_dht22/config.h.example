@@ -1,0 +1,20 @@
+// Copie este arquivo para config.h e ajuste os valores.
+// O config.h fica fora do git (.gitignore) para não publicar a senha do Wi-Fi.
+#pragma once
+
+#define WIFI_SSID     "MinhaRede"
+#define WIFI_PASSWORD "minha-senha"
+
+// Nome na rede (mDNS: http://chamber.local/camara). Prefira IP fixo na config do Klipper.
+#define HOSTNAME      "chamber"
+
+// Pino de dados do DHT22.
+//   NodeMCU (ESP8266): D2 = GPIO4  -> use 4
+//   ESP32 DevKit:      GPIO4       -> use 4
+#define DHT_PIN       4
+
+// IP fixo opcional. Deixe USE_STATIC_IP em 0 para usar DHCP (e reserve o IP no roteador).
+#define USE_STATIC_IP 0
+#define STATIC_IP     192, 168, 1, 50
+#define STATIC_GW     192, 168, 1, 1
+#define STATIC_MASK   255, 255, 255, 0

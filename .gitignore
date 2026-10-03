@@ -4,3 +4,4 @@ node_modules/
 dist/
 *.tgz
 .env
+esp/chamber_dht22/config.h

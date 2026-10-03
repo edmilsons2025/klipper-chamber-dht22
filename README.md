@@ -1,6 +1,6 @@
 # Chamber DHT22 → Klipper / Mainsail
 
-Temperatura e umidade da câmara (*chamber*) de uma impressora 3D com Klipper, medidas por um **DHT22 ligado num Orange Pi** e exibidas no **Mainsail** em um painel próprio, **Chamber**, com gráfico.
+Temperatura e umidade da câmara (*chamber*) de uma impressora 3D com Klipper, medidas por um **DHT22 ligado num Orange Pi** e exibidas no **Mainsail** em um painel próprio, **Chamber**, com gráfico. Também há um firmware alternativo para [ESP8266/ESP32](#alternativa-esp8266-nodemcu-ou-esp32).
 
 O sensor não fica na placa da impressora. Ele vai no Orange Pi, que já está ao lado da impressora, e o Klipper lê o valor pela rede como se o sensor fosse dele.
 
@@ -144,6 +144,63 @@ O que o patch muda:
 - registro do painel no dashboard (`variables.ts`, `gui/getters.ts`, `Dashboard.vue`, ícone e texto em `en.json`). O painel só aparece se existir algum sensor `Chamber_*`.
 
 > Atualizar o Mainsail pelo Moonraker volta para a versão oficial e o painel some. Para manter, aplique o patch na versão nova e gere o build de novo.
+
+## Alternativa: ESP8266 (NodeMCU) ou ESP32
+
+> ⚠️ **Não testado em hardware.** O firmware compila para `esp8266:esp8266:nodemcuv2` e `esp32:esp32:esp32` (ESP32 Dev Module), mas ainda não rodou numa placa de verdade. Se testar, abra uma *issue* contando como foi.
+
+Não tem um Orange Pi (ou Raspberry) perto da impressora? Um NodeMCU ou ESP32 faz o mesmo papel. O Klipper e o Mainsail só precisam de um endereço que responda `GET /camara` com o mesmo JSON, e o firmware em `esp/chamber_dht22` faz exatamente isso:
+
+```
+DHT22 ──fio──► ESP8266 / ESP32 (Wi-Fi) ◄── HTTP ── Klipper (temperatura_remota.py) ──► Mainsail (painel Chamber)
+```
+
+```json
+{"ok":true,"temperatura":23.4,"umidade":48.1,"idade_s":3,"erro":null}
+```
+
+O que muda em relação ao Pi:
+
+- Com o ESP, você tem **só o sensor**. A ponte com a Alexa e o gráfico em PNG do serviço do Pi não existem nele.
+- O ESP lê o DHT22 com a biblioteca da Adafruit, com temporização feita em software. Não precisa de overlay nem do ajuste de *debounce* que o Pi exigiu.
+- Ele lê a cada 10 s. Se passar 2 min sem leitura válida, responde `"ok": false`, e o Klipper mantém o último valor até dar *timeout*.
+
+### Ligações
+
+| DHT22 | NodeMCU (ESP8266) | ESP32 DevKit |
+|---|---|---|
+| VCC (+) | **3V3** | **3V3** |
+| DATA | **D2** (GPIO4) | **GPIO4** |
+| GND (−) | **GND** | **GND** |
+
+Use o mesmo pull-up de 4,7 kΩ a 10 kΩ entre VCC e DATA (a maioria das plaquinhas já tem um). Alimente o sensor com **3,3 V**: no ESP8266, 5 V no DATA pode danificar o pino. Evite pinos de *boot*: no NodeMCU, D3, D4 e D8; no ESP32, GPIO0, 2, 12 e 15.
+
+### Gravação (Arduino IDE ou arduino-cli)
+
+1. Instale o suporte à placa: ESP8266 (`https://arduino.esp8266.com/stable/package_esp8266com_index.json`) ou ESP32 (`https://espressif.github.io/arduino-esp32/package_esp32_index.json`).
+2. Instale as bibliotecas **DHT sensor library** e **Adafruit Unified Sensor**.
+3. Copie `esp/chamber_dht22/config.h.example` para `config.h` e preencha o Wi-Fi. O `config.h` fica fora do git.
+4. Grave:
+
+```bash
+cd esp/chamber_dht22
+# NodeMCU
+arduino-cli compile --fqbn esp8266:esp8266:nodemcuv2 -u -p /dev/ttyUSB0 .
+# ESP32
+arduino-cli compile --fqbn esp32:esp32:esp32 -u -p /dev/ttyUSB0 .
+```
+
+O monitor serial (115200) mostra o IP e as leituras. Teste no navegador: `http://<ip-do-esp>/camara`.
+
+### Klipper
+
+O passo 3 da instalação fica igual. Só troque a `url` nos dois sensores:
+
+```ini
+url: http://<ip-do-esp>/camara
+```
+
+Prefira um **IP fixo**: reserve o IP no DHCP do roteador ou use `USE_STATIC_IP` no `config.h`. O firmware anuncia `chamber.local` por mDNS, mas o sistema da impressora geralmente não resolve nomes `.local`.
 
 ## Alexa (opcional, em andamento)
 
