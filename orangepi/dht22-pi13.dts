@@ -1,0 +1,25 @@
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "allwinner,sun50i-h616";
+
+	/* debounce das interrupções no relógio de 24 MHz (1 us); no padrão de 32 kHz os pulsos do DHT22 se perdem */
+	fragment@0 {
+		target = <&pio>;
+		__overlay__ {
+			input-debounce = <1 1 1 1 1 1 1 1 1 1>;
+		};
+	};
+
+	fragment@1 {
+		target-path = "/";
+		__overlay__ {
+			dht22_camara: humidity-sensor {
+				compatible = "dht11";   /* o driver dht11 do kernel também lê o DHT22 */
+				gpios = <&pio 8 13 0>; /* PI13 = pino 7 */
+				status = "okay";
+			};
+		};
+	};
+};

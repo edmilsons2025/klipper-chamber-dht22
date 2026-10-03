@@ -1,0 +1,395 @@
+diff --git a/src/components/mixins/dashboard.ts b/src/components/mixins/dashboard.ts
+index 7da3685..1f441bc 100644
+--- a/src/components/mixins/dashboard.ts
++++ b/src/components/mixins/dashboard.ts
+@@ -13,6 +13,7 @@ import {
+     mdiLedStrip,
+     mdiPrinter3dNozzle,
+     mdiThermometerLines,
++    mdiHomeThermometerOutline,
+     mdiWebcam,
+     mdiAdjust,
+     mdiMulticast,
+@@ -55,6 +56,8 @@ export default class DashboardMixin extends BaseMixin {
+         switch (name) {
+             case 'webcam':
+                 return mdiWebcam
++            case 'chamber':
++                return mdiHomeThermometerOutline
+             case 'zoffset':
+                 return mdiArrowCollapseVertical
+             case 'toolhead-control':
+diff --git a/src/components/panels/ChamberPanel.vue b/src/components/panels/ChamberPanel.vue
+new file mode 100644
+index 0000000..972e487
+--- /dev/null
++++ b/src/components/panels/ChamberPanel.vue
+@@ -0,0 +1,244 @@
++<template>
++    <panel
++        v-if="klipperReadyForGui && tempSensor"
++        :icon="mdiHomeThermometerOutline"
++        :title="$t('Panels.ChamberPanel.Headline')"
++        :collapsible="true"
++        card-class="chamber-panel">
++        <v-card-text class="pa-0">
++            <v-container class="py-2">
++                <v-row>
++                    <v-col v-for="item in items" :key="item.key" class="col-6 py-2">
++                        <div class="d-flex align-center">
++                            <v-icon :color="item.color" class="mr-3" large>{{ item.icon }}</v-icon>
++                            <div>
++                                <div class="text-caption text--secondary">{{ item.label }}</div>
++                                <div class="text-h5 font-weight-medium">{{ item.value }}</div>
++                                <div v-if="item.minMax" class="text-caption text--disabled">{{ item.minMax }}</div>
++                            </div>
++                        </div>
++                    </v-col>
++                </v-row>
++            </v-container>
++            <v-divider class="my-0" />
++            <e-chart
++                ref="chamberchart"
++                v-observe-visibility="visibilityChanged"
++                :option="chartOptions"
++                :init-options="{ renderer: 'svg' }"
++                :autoresize="true"
++                style="height: 200px; width: 100%"
++                @mouseenter.native="hoverChart = true"
++                @mouseleave.native="hoverChart = false" />
++        </v-card-text>
++    </panel>
++</template>
++
++<script lang="ts">
++import Component from 'vue-class-component'
++import { Mixins, Watch } from 'vue-property-decorator'
++import BaseMixin from '@/components/mixins/base'
++import ThemeMixin from '@/components/mixins/theme'
++import Panel from '@/components/ui/Panel.vue'
++import { mdiClock, mdiHomeThermometerOutline, mdiThermometer, mdiWater } from '@mdi/js'
++import { isChamberSensor, isHumiditySensor } from '@/plugins/chamber'
++import { PrinterTempHistoryStateSourceEntry } from '@/store/printer/tempHistory/types'
++import type { ECharts } from 'echarts/core'
++import type { ECBasicOption } from 'echarts/types/dist/shared.d'
++
++const COLOR_TEMP = '#AB47BC'
++const COLOR_HUMIDITY = '#26A69A'
++
++@Component({
++    components: { Panel },
++})
++export default class ChamberPanel extends Mixins(BaseMixin, ThemeMixin) {
++    declare $refs: {
++        chamberchart: any
++    }
++
++    mdiHomeThermometerOutline = mdiHomeThermometerOutline
++
++    hoverChart = false
++    isVisible = true
++
++    get chamberSensors(): string[] {
++        const sensors: string[] = this.$store.state.printer?.heaters?.available_sensors ?? []
++        return sensors.filter((name) => isChamberSensor(name))
++    }
++
++    get tempSensor(): string | null {
++        return this.chamberSensors.find((name) => !isHumiditySensor(name)) ?? null
++    }
++
++    get humiditySensor(): string | null {
++        return this.chamberSensors.find((name) => isHumiditySensor(name)) ?? null
++    }
++
++    sensorObject(name: string | null): any {
++        if (!name) return {}
++        return this.$store.state.printer[name] ?? {}
++    }
++
++    formatValue(value: number | null | undefined, unit: string): string {
++        if (value === null || value === undefined || isNaN(value)) return '--'
++        return `${value.toFixed(1)} ${unit}`
++    }
++
++    minMax(obj: any, unit: string): string | null {
++        const min = obj.measured_min_temp
++        const max = obj.measured_max_temp
++        if (typeof min !== 'number' || typeof max !== 'number' || min > max) return null
++        return `min ${min.toFixed(1)} ${unit} · max ${max.toFixed(1)} ${unit}`
++    }
++
++    get items() {
++        const temp = this.sensorObject(this.tempSensor)
++        const items = [
++            {
++                key: 'temperature',
++                label: this.$t('Panels.ChamberPanel.Temperature'),
++                icon: mdiThermometer,
++                color: COLOR_TEMP,
++                value: this.formatValue(temp.temperature, '°C'),
++                minMax: this.minMax(temp, '°C'),
++            },
++        ]
++        if (this.humiditySensor) {
++            const hum = this.sensorObject(this.humiditySensor)
++            items.push({
++                key: 'humidity',
++                label: this.$t('Panels.ChamberPanel.Humidity'),
++                icon: mdiWater,
++                color: COLOR_HUMIDITY,
++                value: this.formatValue(hum.temperature, '%'),
++                minMax: this.minMax(hum, '%'),
++            })
++        }
++        return items
++    }
++
++    get source(): PrinterTempHistoryStateSourceEntry[] {
++        return this.$store.state.printer.tempHistory.source ?? []
++    }
++
++    get timeFormat() {
++        return this.hours12Format ? '{hh}:{mm}' : '{HH}:{mm}'
++    }
++
++    get series() {
++        const series: any[] = []
++        if (this.tempSensor) {
++            series.push({
++                name: 'temperature',
++                type: 'line',
++                yAxisIndex: 0,
++                encode: { x: 'date', y: `${this.tempSensor}-temperature` },
++                showSymbol: false,
++                animation: false,
++                lineStyle: { color: COLOR_TEMP, width: 2 },
++                itemStyle: { color: COLOR_TEMP },
++            })
++        }
++        if (this.humiditySensor) {
++            series.push({
++                name: 'humidity',
++                type: 'line',
++                yAxisIndex: 1,
++                encode: { x: 'date', y: `${this.humiditySensor}-temperature` },
++                showSymbol: false,
++                animation: false,
++                lineStyle: { color: COLOR_HUMIDITY, width: 2 },
++                itemStyle: { color: COLOR_HUMIDITY },
++            })
++        }
++        return series
++    }
++
++    axis(name: string, color: string, align: string, extra: any) {
++        return {
++            name,
++            type: 'value',
++            nameLocation: 'end',
++            nameGap: 5,
++            nameTextStyle: { color, align },
++            splitLine: { lineStyle: { color: this.fgColorFaint } },
++            axisLabel: { color, margin: 5 },
++            axisLine: { show: true, lineStyle: { color: this.fgColorLow } },
++            ...extra,
++        }
++    }
++
++    get chartOptions(): ECBasicOption {
++        return {
++            renderer: 'svg',
++            animation: false,
++            grid: { top: 30, right: 40, bottom: 30, left: 40 },
++            tooltip: {
++                animation: false,
++                trigger: 'axis',
++                backgroundColor: this.bgColor(1),
++                borderWidth: 0,
++                textStyle: { color: this.fgColorHi, fontSize: '14px' },
++                padding: 12,
++                confine: true,
++                formatter: this.tooltipFormatter,
++            },
++            xAxis: {
++                type: 'time',
++                splitNumber: 5,
++                minInterval: 60 * 1000,
++                splitLine: { show: true, lineStyle: { color: this.fgColorFaint } },
++                axisLabel: { color: this.fgColorLow, margin: 10, formatter: this.timeFormat },
++            },
++            yAxis: [
++                this.axis('°C', COLOR_TEMP, 'left', {
++                    min: (v: any) => Math.floor(v.min - 2),
++                    max: (v: any) => Math.ceil(v.max + 2),
++                }),
++                this.axis('%', COLOR_HUMIDITY, 'right', { min: 0, max: 100, interval: 25, splitLine: { show: false } }),
++            ],
++            dataset: { source: [] },
++            series: this.series,
++        }
++    }
++
++    tooltipFormatter(datasets: any[]) {
++        if (!datasets.length) return ''
++        let time = datasets[0].axisValueLabel ?? ''
++        time = time.substring(time.indexOf(' '))
++        let output = `<div class="font-weight-bold pb-1"><svg viewBox="0 0 24 24" style="width:12px;height:12px;fill:currentColor;margin-right:5px"><path d="${mdiClock}"/></svg>${time}</div>`
++        datasets.forEach((d: any) => {
++            const key =
++                d.seriesName === 'humidity' ? `${this.humiditySensor}-temperature` : `${this.tempSensor}-temperature`
++            const value = d.value?.[key]
++            const unit = d.seriesName === 'humidity' ? '%' : '°C'
++            const label =
++                d.seriesName === 'humidity'
++                    ? this.$t('Panels.ChamberPanel.Humidity')
++                    : this.$t('Panels.ChamberPanel.Temperature')
++            output += `<div>${d.marker}${label}: <b>${typeof value === 'number' ? value.toFixed(1) : '--'} ${unit}</b></div>`
++        })
++        return output
++    }
++
++    get chart(): ECharts | null {
++        return this.$refs.chamberchart?.chart ?? null
++    }
++
++    visibilityChanged(isVisible: boolean) {
++        this.isVisible = isVisible
++    }
++
++    @Watch('source')
++    sourceChanged(newVal: PrinterTempHistoryStateSourceEntry[]) {
++        if (!this.chart || !this.isVisible || this.hoverChart) return
++        this.chart.setOption({ dataset: { source: newVal } })
++    }
++
++    beforeDestroy() {
++        if (typeof window === 'undefined') return
++        if (this.chart) this.chart.dispose()
++    }
++}
++</script>
+diff --git a/src/components/panels/Temperature/TemperaturePanelList.vue b/src/components/panels/Temperature/TemperaturePanelList.vue
+index ba13c35..8625075 100644
+--- a/src/components/panels/Temperature/TemperaturePanelList.vue
++++ b/src/components/panels/Temperature/TemperaturePanelList.vue
+@@ -50,6 +50,7 @@
+ </template>
+ 
+ <script lang="ts">
++import { isChamberSensor } from '@/plugins/chamber'
+ import Component from 'vue-class-component'
+ import { Mixins } from 'vue-property-decorator'
+ import BaseMixin from '@/components/mixins/base'
+@@ -101,6 +102,7 @@ export default class TemperaturePanelList extends Mixins(BaseMixin) {
+         return this.filterNamesAndSort(this.available_sensors).filter((fullName: string) => {
+             if (this.available_heaters.includes(fullName)) return false
+             if (this.temperature_fans.includes(fullName)) return false
++            if (isChamberSensor(fullName)) return false
+ 
+             // hide MCU & Host sensors, if the function is enabled
+             if (this.hideMcuHostSensors && this.checkMcuHostSensor(fullName)) return false
+diff --git a/src/locales/en.json b/src/locales/en.json
+index 0381e5c..144b3e8 100644
+--- a/src/locales/en.json
++++ b/src/locales/en.json
+@@ -679,6 +679,12 @@
+             "Weight": "Weight",
+             "WeightSubtitle": "The weight of the filament in grams (without spool)."
+         },
++        "ChamberPanel": {
++            "Headline": "Chamber",
++            "Humidity": "Humidity",
++            "NoData": "Waiting for sensor data",
++            "Temperature": "Temperature"
++        },
+         "ExtruderControlPanel": {
+             "Allowed": "Allowed",
+             "CleanNozzle": "Clean Nozzle",
+diff --git a/src/pages/Dashboard.vue b/src/pages/Dashboard.vue
+index 7327676..c5231f7 100644
+--- a/src/pages/Dashboard.vue
++++ b/src/pages/Dashboard.vue
+@@ -99,10 +99,12 @@ import StatusPanel from '@/components/panels/StatusPanel.vue'
+ import ToolheadControlPanel from '@/components/panels/ToolheadControlPanel.vue'
+ import TemperaturePanel from '@/components/panels/TemperaturePanel.vue'
+ import WebcamPanel from '@/components/panels/WebcamPanel.vue'
++import ChamberPanel from '@/components/panels/ChamberPanel.vue'
+ 
+ @Component({
+     components: {
+         AfcPanel,
++        ChamberPanel,
+         ExtruderControlPanel,
+         KlippyStatePanel,
+         LedEffectsPanel,
+diff --git a/src/plugins/chamber.ts b/src/plugins/chamber.ts
+new file mode 100644
+index 0000000..54ffc06
+--- /dev/null
++++ b/src/plugins/chamber.ts
+@@ -0,0 +1,6 @@
++// Sensores da câmara (DHT22 lido pelo Orange Pi): temperature_sensor Chamber_* — ficam no painel Chamber
++export const isChamberSensor = (fullName: string): boolean => {
++    const name = fullName.indexOf(' ') !== -1 ? fullName.substring(fullName.indexOf(' ') + 1) : fullName
++    return fullName.startsWith('temperature_sensor ') && name.toLowerCase().startsWith('chamber_')
++}
++export const isHumiditySensor = (fullName: string): boolean => /humid/i.test(fullName)
+diff --git a/src/store/gui/getters.ts b/src/store/gui/getters.ts
+index 0418f7c..4b37384 100644
+--- a/src/store/gui/getters.ts
++++ b/src/store/gui/getters.ts
+@@ -3,6 +3,7 @@ import { GuiState } from '@/store/gui/types'
+ import { GuiMacrosStateMacrogroup } from '@/store/gui/macros/types'
+ import { allDashboardPanels, defaultTheme, themes } from '@/store/variables'
+ import { Theme } from '@/store/types'
++import { isChamberSensor } from '@/plugins/chamber'
+ 
+ // eslint-disable-next-line
+ export const getters: GetterTree<GuiState, any> = {
+@@ -80,6 +81,11 @@ export const getters: GetterTree<GuiState, any> = {
+             allPanels = allPanels.filter((name) => name !== 'temperature')
+         }
+ 
++        // remove chamber panel, if there is no Chamber_* sensor
++        if (!printerTemperatureSensors.some((name: string) => isChamberSensor(name))) {
++            allPanels = allPanels.filter((name) => name !== 'chamber')
++        }
++
+         // remove webcam panel, if no webcam exists
+         const webcams = getters['webcams/getWebcams']
+         if (webcams.length === 0) {
+diff --git a/src/store/printer/tempHistory/actions.ts b/src/store/printer/tempHistory/actions.ts
+index 0451d7a..f52315e 100644
+--- a/src/store/printer/tempHistory/actions.ts
++++ b/src/store/printer/tempHistory/actions.ts
+@@ -13,6 +13,7 @@ import {
+     PrinterTempHistoryStateSourceEntry,
+ } from '@/store/printer/tempHistory/types'
+ import { RootState } from '@/store/types'
++import { isChamberSensor } from '@/plugins/chamber'
+ 
+ export const actions: ActionTree<PrinterTempHistoryState, RootState> = {
+     reset({ commit, state }) {
+@@ -130,6 +131,9 @@ export const actions: ActionTree<PrinterTempHistoryState, RootState> = {
+             let colorNumber = 0
+ 
+             masterDatasetKeys.forEach((name: string) => {
++                // sensores da câmara têm gráfico próprio (painel Chamber)
++                if (isChamberSensor(name)) return
++
+                 // get color from store (if exists)
+                 let color = rootGetters['gui/getDatasetValue']({ name: name, type: 'color' })
+ 
+diff --git a/src/store/variables.ts b/src/store/variables.ts
+index 0017935..3dfb94b 100644
+--- a/src/store/variables.ts
++++ b/src/store/variables.ts
+@@ -99,6 +99,7 @@ export const maxGcodeHistory = 50
+  */
+ export const allDashboardPanels = [
+     'afc',
++    'chamber',
+     'toolhead-control',
+     'extruder-control',
+     'macros',

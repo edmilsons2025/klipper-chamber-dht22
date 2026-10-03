@@ -1,0 +1,5 @@
+flask==3.1.2
+ask-sdk-core
+flask-ask-sdk
+waitress
+pillow

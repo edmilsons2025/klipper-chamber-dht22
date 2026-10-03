@@ -1,0 +1,278 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "minha impressora",
+      "intents": [
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.NavigateHomeIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        },
+        {
+          "name": "AquecerIntent",
+          "slots": [
+            {
+              "name": "parte",
+              "type": "PARTE_AQUECER"
+            },
+            {
+              "name": "graus",
+              "type": "AMAZON.NUMBER"
+            }
+          ],
+          "samples": [
+            "aquecer a {parte} em {graus} graus",
+            "aquecer o {parte} em {graus} graus",
+            "aquecer a {parte} para {graus} graus",
+            "aquecer o {parte} para {graus} graus",
+            "aquecer a {parte} a {graus} graus",
+            "aquecer o {parte} a {graus} graus",
+            "aquecer a {parte} em {graus}",
+            "aquecer o {parte} em {graus}",
+            "esquentar a {parte} em {graus} graus",
+            "esquentar o {parte} em {graus} graus",
+            "colocar a {parte} em {graus} graus",
+            "colocar o {parte} em {graus} graus",
+            "deixar a {parte} em {graus} graus",
+            "deixar o {parte} em {graus} graus",
+            "aquecer a {parte}",
+            "aquecer o {parte}"
+          ]
+        },
+        {
+          "name": "PreAquecerIntent",
+          "slots": [
+            {
+              "name": "material",
+              "type": "MATERIAL"
+            }
+          ],
+          "samples": [
+            "pré aquecer {material}",
+            "pré aquecer para {material}",
+            "preaquecer {material}",
+            "preparar para {material}",
+            "aquecer para {material}",
+            "esquentar para {material}"
+          ]
+        },
+        {
+          "name": "EsfriarIntent",
+          "samples": [
+            "esfriar tudo",
+            "esfriar a impressora",
+            "resfriar tudo",
+            "desligar o aquecimento",
+            "desligar os aquecedores",
+            "desligar o aquecimento da impressora"
+          ]
+        },
+        {
+          "name": "TemperaturaIntent",
+          "slots": [
+            {
+              "name": "local",
+              "type": "PARTE_TEMP"
+            }
+          ],
+          "samples": [
+            "qual a temperatura do {local}",
+            "qual a temperatura da {local}",
+            "qual é a temperatura do {local}",
+            "qual é a temperatura da {local}",
+            "quantos graus está o {local}",
+            "quantos graus está a {local}",
+            "como está a temperatura do {local}",
+            "como está a temperatura da {local}",
+            "a temperatura do {local}",
+            "a temperatura da {local}",
+            "qual a temperatura",
+            "quais as temperaturas"
+          ]
+        },
+        {
+          "name": "UmidadeIntent",
+          "samples": [
+            "qual a umidade",
+            "qual a umidade da câmara",
+            "qual é a umidade",
+            "como está a umidade",
+            "quanto está a umidade",
+            "a umidade da câmara"
+          ]
+        },
+        {
+          "name": "TempoRestanteIntent",
+          "samples": [
+            "quanto tempo falta",
+            "quanto falta",
+            "quanto tempo falta para terminar",
+            "quanto tempo falta para a impressão terminar",
+            "quando termina a impressão",
+            "quando termina",
+            "qual o progresso",
+            "qual o progresso da impressão",
+            "em quanto está a impressão"
+          ]
+        },
+        {
+          "name": "StatusIntent",
+          "samples": [
+            "qual o status",
+            "qual é o status",
+            "como está a impressão",
+            "como está a impressora",
+            "o que ela está fazendo",
+            "status"
+          ]
+        },
+        {
+          "name": "PausarIntent",
+          "samples": [
+            "pausar",
+            "pausar a impressão",
+            "dar uma pausa",
+            "dar uma pausa na impressão"
+          ]
+        },
+        {
+          "name": "RetomarIntent",
+          "samples": [
+            "retomar",
+            "retomar a impressão",
+            "continuar a impressão",
+            "voltar a imprimir"
+          ]
+        },
+        {
+          "name": "CancelarImpressaoIntent",
+          "samples": [
+            "parar a impressão",
+            "cancelar a impressão",
+            "parar de imprimir",
+            "abortar a impressão",
+            "interromper a impressão"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "PARTE_AQUECER",
+          "values": [
+            {
+              "name": {
+                "value": "mesa",
+                "synonyms": [
+                  "cama",
+                  "base",
+                  "plataforma",
+                  "mesa aquecida"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "bico",
+                "synonyms": [
+                  "extrusor",
+                  "hotend",
+                  "nozzle",
+                  "cabeçote"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PARTE_TEMP",
+          "values": [
+            {
+              "name": {
+                "value": "mesa",
+                "synonyms": [
+                  "cama",
+                  "base",
+                  "plataforma"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "bico",
+                "synonyms": [
+                  "extrusor",
+                  "hotend",
+                  "nozzle",
+                  "cabeçote"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "camara",
+                "synonyms": [
+                  "câmara",
+                  "gabinete",
+                  "estufa",
+                  "caixa",
+                  "enclausuramento"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MATERIAL",
+          "values": [
+            {
+              "name": {
+                "value": "pla",
+                "synonyms": [
+                  "p l a",
+                  "pê ele á"
+                ]
+              }
+            },
+            {
+              "name": {
+                "value": "petg",
+                "synonyms": [
+                  "pet g",
+                  "p e t g",
+                  "pet"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [
+        {
+          "name": "CancelarImpressaoIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": []
+        }
+      ],
+      "delegationStrategy": "SKILL_RESPONSE"
+    },
+    "prompts": []
+  }
+}
