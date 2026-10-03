@@ -155,12 +155,6 @@ O serviço do Pi tem um endpoint de *custom skill* (`POST /alexa`, com verifica�
 
 O modelo de voz (pt-BR) está em `alexa/modelo_alexa.json`. O endpoint precisa estar acessível em HTTPS (aqui, por um túnel Cloudflare só no caminho `/alexa`). Ponto em aberto: a Amazon recusou o certificado Let's Encrypt de cadeia nova (YE2 → Root YE); a correção prevista é trocar a autoridade do certificado do Cloudflare para Google Trust Services.
 
-## Problemas encontrados
+## Licença
 
-| Sintoma | Causa | Solução |
-|---|---|---|
-| `Only 1 signal edges detected` | Sensor sem resposta: alimentação, solda ou fio | Refazer as soldas e conferir VCC/GND |
-| `Only 6–26 signal edges detected` | Debounce do GPIO engolindo os pulsos | `input-debounce = <1 ...>` no overlay |
-| Sensor aparece com 0 °C no Klipper | Pi fora do ar ou URL errada | `curl http://<pi>:8790/camara` |
-| Nome "CÃ¢mara" no Mainsail | Klipper lendo acento como Latin-1 | Nomes sem acento |
-| Mudança no módulo não entra | `RESTART` mantém o módulo antigo na memória | Reiniciar o serviço do Klipper |
+[MIT](LICENSE)
