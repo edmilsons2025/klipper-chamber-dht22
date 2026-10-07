@@ -1,24 +1,39 @@
-# Sensor de temperatura remoto para o Klipper (lê a câmara medida pelo DHT22 do Orange Pi).
+# Sensor remoto para o Klipper: lê um valor numérico de um JSON servido por HTTP.
 #
-# Instalação: copiar para klippy/extras/ e, no printer.cfg:
+# Feito para o DHT22 da câmara no Orange Pi, mas serve para qualquer sensor (BME280, SHT31, DS18B20,
+# termopar, um ESP, outro computador...): basta algo na rede responder GET <url> com um JSON assim:
+#
+#   {"ok": true, "temperatura": 23.4, "umidade": 48.1}
+#
+#   - cada sensor do Klipper lê UM campo, escolhido por "valor" (qualquer nome: temperatura, umidade,
+#     pressao, co2...); o campo precisa ser um número (ou texto com número, como "23.4");
+#   - "ok" é opcional; se vier false, a leitura é ignorada e o último valor válido continua valendo;
+#   - outros campos são ignorados; a resposta pode ter qualquer tamanho até 64 KB.
+#
+# Instalação: copiar para klippy/extras/ e, no printer.cfg (ou num arquivo incluído):
 #   [temperatura_remota]
 #
-#   [temperature_sensor Camara_Temp]
+#   [temperature_sensor Chamber_Temp]
 #   sensor_type: temperatura_remota
 #   url: http://172.16.12.199:8790/camara
-#   valor: temperatura        (ou umidade, para um segundo sensor com a umidade em %)
+#   valor: temperatura        (o campo do JSON que este sensor mostra)
 #   min_temp: -10
 #   max_temp: 100
 #
+# O Klipper só conhece "temperatura": um sensor de outra grandeza (umidade em %, pressão...) aparece
+# como a temperatura desse temperature_sensor. É assim que ele entra no histórico e nos gráficos.
+#
 # A leitura HTTP roda numa thread separada; o reactor do Klipper só lê o último valor,
-# então rede lenta ou o Pi desligado nunca travam a impressora.
+# então rede lenta ou a fonte desligada nunca travam a impressora.
 import json
 import logging
+import re
 import threading
 import time
 import urllib.request
 
 INTERVALO = 5.0
+MAX_RESPOSTA = 64 * 1024
 
 
 class TemperaturaRemota:
@@ -27,9 +42,12 @@ class TemperaturaRemota:
         self.reactor = self.printer.get_reactor()
         self.name = config.get_name().split()[-1]
         self.url = config.get("url")
-        self.valor = config.getchoice("valor", {"temperatura": "temperatura", "umidade": "umidade"}, "temperatura")
+        if not re.match(r"^https?://", self.url):
+            raise config.error("temperatura_remota: url deve começar com http:// ou https://")
+        self.valor = config.get("valor", "temperatura")
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", self.valor):
+            raise config.error("temperatura_remota: valor deve ser o nome de um campo do JSON (letras, números e _)")
         self.temp = 0.0
-        self.umidade = None
         self.min_temp = self.max_temp = 0.0
         self.callback = None
         self._ultimo_ok = 0.0
@@ -51,14 +69,23 @@ class TemperaturaRemota:
     def get_report_time_delta(self):
         return INTERVALO
 
+    def _ler(self, dados):
+        """Extrai o valor deste sensor do JSON recebido; None se a leitura não serve."""
+        if not isinstance(dados, dict) or dados.get("ok", True) is False:
+            return None
+        v = dados.get(self.valor)
+        if v is None or isinstance(v, bool):
+            return None
+        v = float(v)
+        return v if v == v else None  # descarta NaN
+
     def _buscar(self):
         while True:
             try:
                 with urllib.request.urlopen(self.url, timeout=3) as r:
-                    d = json.loads(r.read())
-                if d.get("ok") and d.get(self.valor) is not None:
-                    self.temp = float(d[self.valor])
-                    self.umidade = d.get("umidade")
+                    v = self._ler(json.loads(r.read(MAX_RESPOSTA)))
+                if v is not None:
+                    self.temp = v
                     self._ultimo_ok = time.time()
             except Exception as e:
                 logging.info("temperatura_remota %s: %s", self.name, e)

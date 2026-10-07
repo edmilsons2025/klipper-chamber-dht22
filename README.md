@@ -22,6 +22,55 @@ DHT22 ──fio──► Orange Pi Zero 2W                         Ender 3 V3 KE
 3. **Klipper** (`klipper/temperatura_remota.py`): um tipo de sensor novo para `temperature_sensor`. A requisição HTTP roda numa *thread* separada; o *reactor* do Klipper só lê o último valor, então rede lenta ou o Pi desligado nunca travam a impressora.
 4. **Mainsail** (`mainsail/mainsail-chamber.patch`): painel **Chamber** com temperatura, umidade, mínimos e máximos, mais um gráfico com dois eixos (°C à esquerda, % à direita). Os sensores `Chamber_*` saem do painel Temperatures.
 
+## Como a impressora lê o sensor (use qualquer sensor)
+
+A impressora não sabe que existe um DHT22. Ela só faz, a cada 5 s, um `GET` HTTP numa URL e lê um número do JSON que volta. Qualquer coisa que responda nesse formato serve: outro sensor no Pi (BME280, SHT31, DS18B20, termopar), um ESP, um Raspberry, um Home Assistant...
+
+**O que a impressora pede:**
+
+```http
+GET http://<ip-da-fonte>:<porta>/camara
+```
+
+**O que a fonte tem que responder** (status 200, corpo em JSON):
+
+```json
+{"ok": true, "temperatura": 23.4, "umidade": 48.1}
+```
+
+| Campo | Obrigatório | Regra |
+|---|---|---|
+| o campo escolhido em `valor:` | sim | número (ou texto com número, como `"23.4"`). Pode ter qualquer nome: `temperatura`, `umidade`, `pressao`, `co2`... |
+| `ok` | não | se vier `false`, a leitura é ignorada. Sem o campo, vale como `true` |
+| outros (`idade_s`, `erro`...) | não | ignorados pela impressora; servem para diagnóstico |
+
+**Como cada valor vira um sensor no Klipper** (`camara_pi.cfg`):
+
+```ini
+[temperatura_remota]                  # carrega o módulo klippy/extras/temperatura_remota.py
+
+[temperature_sensor Chamber_Temp]     # nome que aparece no Mainsail
+sensor_type: temperatura_remota
+url: http://192.168.1.60:8790/camara  # a URL da sua fonte
+valor: temperatura                    # o campo do JSON que este sensor mostra
+min_temp: -10
+max_temp: 100
+```
+
+Para mostrar mais uma grandeza, crie outro `[temperature_sensor ...]` com a mesma `url` e outro `valor:`. O Klipper só conhece "temperatura", então umidade, pressão etc. aparecem como a temperatura desse sensor. É assim que entram no histórico do Moonraker e nos gráficos. O painel Chamber do Mainsail usa os sensores com nome `Chamber_*`, e o que tiver "humid" no nome é tratado como umidade (%).
+
+**Comportamento quando a fonte falha:** a requisição tem 3 s de *timeout* e roda numa *thread* separada. Se a fonte cair, o Klipper continua funcionando e o sensor mostra o último valor válido. A impressão não é afetada.
+
+**Fazer a sua fonte:** `exemplos/fonte_sensor.py` é um servidor pronto, só com a biblioteca padrão do Python. Edite a função `ler_sensor()`, que já traz exemplos para DHT22 via kernel, DS18B20 e BME280, e rode:
+
+```bash
+python3 exemplos/fonte_sensor.py --porta 8790
+curl http://localhost:8790/camara
+./install.sh klipper --impressora <ip-da-impressora> --url http://<ip-da-fonte>:8790/camara
+```
+
+Para testar uma fonte antes de instalar, rode na impressora: `wget -q -O - http://<ip-da-fonte>:8790/camara`.
+
 ## Hardware
 
 | Item | Detalhe |
@@ -110,7 +159,7 @@ No `printer.cfg`, junto dos outros `[include]`:
 [include camara_pi.cfg]
 ```
 
-Os sensores (o parâmetro `valor` escolhe o que cada um lê):
+Os sensores (o parâmetro `valor` escolhe o campo do JSON que cada um lê; veja [Como a impressora lê o sensor](#como-a-impressora-lê-o-sensor-use-qualquer-sensor)):
 
 ```ini
 [temperatura_remota]
@@ -224,6 +273,8 @@ O passo 3 da instalação fica igual. Só troque a `url` nos dois sensores:
 ```ini
 url: http://<ip-do-esp>/camara
 ```
+
+Ou deixe o instalador fazer isso: `./install.sh klipper --impressora <ip-da-impressora> --url http://<ip-do-esp>/camara`.
 
 Prefira um **IP fixo**: reserve o IP no DHCP do roteador ou use `USE_STATIC_IP` no `config.h`. O firmware anuncia `chamber.local` por mDNS, mas o sistema da impressora geralmente não resolve nomes `.local`.
 

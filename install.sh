@@ -7,9 +7,10 @@
 #        ./install.sh klipper  --impressora 192.168.1.50   # módulo + sensores no Klipper
 #        ./install.sh mainsail --impressora 192.168.1.50   # painel Chamber (precisa de Node.js)
 #        ./install.sh status   --impressora 192.168.1.50
+#        ./install.sh klipper  --impressora 192.168.1.50 --url http://192.168.1.60/camara   # outra fonte (ESP, etc.)
 #        ./install.sh desinstalar-klipper | restaurar-mainsail --impressora 192.168.1.50
 #
-# Opções: --pi-ip <ip> (padrão: detectado)  --usuario-ssh root  --porta 8790  --runtime docker|systemd
+# Opções: --url <http://...> --pi-ip <ip> (padrão: detectado)  --usuario-ssh root  --porta 8790  --runtime docker|systemd
 #         --tz America/Sao_Paulo  --mainsail-versao v2.17.0  --dry-run  -y/--sim (não pergunta)
 #
 # Segurança:
@@ -25,6 +26,7 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 
 IMPRESSORA=""
 PI_IP=""
+SENSOR_URL=""              # endereço que o Klipper lê (padrão: http://<ip-do-pi>:<porta>/camara)
 SSH_USER="root"
 PORTA=8790
 MR_PORTA=7125
@@ -54,7 +56,7 @@ run() {
     "$@"
 }
 
-uso() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+uso() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 TMP="$(mktemp -d)"
 SSH_CTL="$TMP/ssh-ctl"
@@ -336,24 +338,36 @@ cmd_pi() {
 # ================================================================== Klipper (na impressora)
 gerar_cfg() {
     cat <<EOF
-# Chamber: DHT22 ligado no Orange Pi ($PI_IP), lido pela rede.
+# Chamber: sensor lido pela rede em $SENSOR_URL
 # Gerado por install.sh em $STAMP. Módulo: $KL_EXTRAS/temperatura_remota.py
+# Formato esperado da resposta: veja "Como a impressora lê o sensor" no README.
 [temperatura_remota]
 
 [temperature_sensor Chamber_Temp]
 sensor_type: temperatura_remota
-url: http://$PI_IP:$PORTA/camara
+url: $SENSOR_URL
 valor: temperatura
 min_temp: -10
 max_temp: 100
 
 [temperature_sensor Chamber_Humidity]
 sensor_type: temperatura_remota
-url: http://$PI_IP:$PORTA/camara
+url: $SENSOR_URL
 valor: umidade
 min_temp: -10
 max_temp: 100
 EOF
+}
+
+# confere a resposta da fonte do sensor: JSON com "temperatura" e "umidade" numéricos e "ok" diferente de false
+resposta_valida() {
+    python3 -c '
+import json, sys
+d = json.loads(sys.argv[1])
+assert d.get("ok", True) is not False
+for k in ("temperatura", "umidade"):
+    float(d[k])
+' "$1" 2>/dev/null
 }
 
 RE_INCLUDE='^[[:space:]]*\[include[[:space:]]+camara_pi\.cfg[[:space:]]*\]'
@@ -380,17 +394,20 @@ klipper_restaurar() {  # desfaz a instalação a partir dos backups desta execu�
 
 cmd_klipper() {
     precisa_impressora
-    detectar_pi_ip
+    if [[ -z $SENSOR_URL ]]; then
+        detectar_pi_ip
+        SENSOR_URL="http://$PI_IP:$PORTA/camara"
+    fi
     conectar_impressora
     detectar_klipper
 
-    info "Testando o sensor a partir da impressora (http://$PI_IP:$PORTA/camara)"
+    info "Testando o sensor a partir da impressora ($SENSOR_URL)"
     local r
-    r="$(rsh_ro "wget -q -O - -T 5 'http://$PI_IP:$PORTA/camara' 2>/dev/null || curl -fsS -m 5 'http://$PI_IP:$PORTA/camara'" || true)"
-    if [[ $r == *'"ok":true'* ]]; then
-        ok "a impressora alcança o Pi: $r"
+    r="$(rsh_ro "wget -q -O - -T 5 '$SENSOR_URL' 2>/dev/null || curl -fsS -m 5 '$SENSOR_URL'" || true)"
+    if resposta_valida "$r"; then
+        ok "a impressora alcança o sensor: $r"
     else
-        aviso "a impressora não recebeu uma leitura válida do Pi (${r:-sem resposta}). O serviço do Pi está rodando?"
+        aviso "a impressora não recebeu uma leitura válida (${r:-sem resposta}). A fonte do sensor está rodando?"
         confirmar "Instalar no Klipper mesmo assim?" || erro "cancelado."
     fi
 
@@ -413,7 +430,7 @@ cmd_klipper() {
     echo
     info "Vou instalar na impressora:"
     echo "    $KL_EXTRAS/temperatura_remota.py"
-    echo "    $KL_CFG/camara_pi.cfg  (sensores lendo http://$PI_IP:$PORTA/camara)"
+    echo "    $KL_CFG/camara_pi.cfg  (sensores lendo $SENSOR_URL)"
     [[ $novo_include == 1 ]] && echo "    [include camara_pi.cfg] no printer.cfg"
     echo "    e reiniciar o serviço do Klipper ($KL_RESTART)"
     garantir_impressora_parada
@@ -551,6 +568,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --impressora) IMPRESSORA="${2:?}"; shift 2 ;;
         --pi-ip) PI_IP="${2:?}"; shift 2 ;;
+        --url) SENSOR_URL="${2:?}"; shift 2 ;;
         --usuario-ssh) SSH_USER="${2:?}"; shift 2 ;;
         --porta) PORTA="${2:?}"; shift 2 ;;
         --runtime) RUNTIME="${2:?}"; shift 2 ;;
@@ -562,6 +580,9 @@ while [[ $# -gt 0 ]]; do
         *) erro "opção desconhecida: $1 (veja $0 --help)" ;;
     esac
 done
+# a URL vai para o .cfg e para um comando remoto: só http(s), sem aspas, espaços ou caracteres de shell
+[[ -z $SENSOR_URL || $SENSOR_URL =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?(/[A-Za-z0-9._~/-]*)?$ ]] ||
+    erro "URL inválida: $SENSOR_URL (use algo como http://192.168.1.60/camara)"
 [[ $PORTA =~ ^[0-9]{2,5}$ ]] || erro "porta inválida: $PORTA"
 [[ $SSH_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || erro "usuário SSH inválido: $SSH_USER"
 [[ $MAINSAIL_VERSAO =~ ^v[0-9.]+$ ]] || erro "versão do Mainsail inválida: $MAINSAIL_VERSAO"
