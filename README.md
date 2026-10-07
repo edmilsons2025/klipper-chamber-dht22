@@ -43,7 +43,32 @@ DHT22 ──fio──► Orange Pi Zero 2W                         Ender 3 V3 KE
 
 ## Instalação
 
-### 1. Overlay no Orange Pi
+### Automática (`install.sh`)
+
+O script faz os passos 1 a 4 abaixo. Rode no Orange Pi, dentro do clone do repositório:
+
+```bash
+sudo ./install.sh pi       --impressora <ip-da-impressora>   # overlay; reinicie e rode de novo para instalar o serviço
+     ./install.sh klipper  --impressora <ip-da-impressora>   # módulo + camara_pi.cfg + [include] (SSH como root)
+     ./install.sh mainsail --impressora <ip-da-impressora>   # opcional: precisa de Node.js 20+
+     ./install.sh status   --impressora <ip-da-impressora>
+```
+
+O que ele garante:
+
+- **backup antes de qualquer mudança**: `printer.cfg`, `camara_pi.cfg`, o módulo e o `armbianEnv.txt` ganham uma cópia `.bak-chamber-<data>`; o Mainsail original fica em `mainsail-original`;
+- **não reinicia o Klipper durante uma impressão** (consulta o `print_stats` no Moonraker);
+- **desfaz sozinho**: se o Klipper não voltar `ready` depois da instalação, restaura os arquivos anteriores e reinicia;
+- **testa antes de mexer**: confere a placa (H616/H618, Zero 2W), lê o sensor e verifica se a impressora alcança `GET /camara` no Pi;
+- **serviço com o mínimo de permissões**: no Docker, roda sem root, sem capabilities e com o sistema de arquivos só leitura. Sem Docker (`--runtime systemd`), usa um usuário próprio com as proteções do systemd. As variáveis da Alexa de um container `impressora` anterior são mantidas;
+- `--dry-run` mostra tudo o que seria feito, sem mudar nada; o script não guarda senhas (o SSH pede a da impressora uma vez por execução);
+- para voltar atrás: `./install.sh desinstalar-klipper` e `./install.sh restaurar-mainsail`.
+
+O build do Mainsail pode ficar sem memória no Pi Zero 2W. Se acontecer, rode `./install.sh mainsail` num PC com Linux ou macOS.
+
+### Manual
+
+#### 1. Overlay no Orange Pi
 
 ```bash
 sudo armbian-add-overlay orangepi/dht22-pi13.dts
@@ -59,7 +84,7 @@ cat /sys/bus/iio/devices/iio:device0/in_humidityrelative_input  # 48000 = 48,0 %
 
 **O detalhe que faz funcionar:** o overlay também define `input-debounce = <1 ...>` no controlador de GPIO. No padrão, o filtro de ruído das interrupções do Allwinner roda num relógio de 32 kHz (~31 µs). Isso engole os pulsos de 26–28 µs do DHT22, e o kernel registra `Only 22 signal edges detected` (uma leitura completa tem 84 bordas). Com o filtro no relógio de 24 MHz (1 µs), a leitura fecha.
 
-### 2. Serviço no Orange Pi
+#### 2. Serviço no Orange Pi
 
 ```bash
 cd orangepi/service
@@ -72,7 +97,7 @@ curl http://localhost:8790/camara
 
 O container lê `/sys/bus/iio` do host sem privilégios extras. O mesmo serviço também tem a ponte com a Alexa (ver abaixo); sem configurá-la, ela simplesmente não é usada.
 
-### 3. Klipper (na impressora)
+#### 3. Klipper (na impressora)
 
 ```bash
 scp klipper/temperatura_remota.py root@<impressora>:/usr/share/klipper/klippy/extras/
@@ -113,7 +138,7 @@ Reinicie o **serviço** do Klipper. O `RESTART` não recarrega módulos Python j
 /etc/init.d/S55klipper_service restart     # Creality OS; em outros sistemas: sudo systemctl restart klipper
 ```
 
-### 4. Mainsail com o painel Chamber
+#### 4. Mainsail com o painel Chamber
 
 O patch foi feito sobre o **Mainsail v2.17.0**:
 
